@@ -9,7 +9,7 @@ import (
 )
 
 func TestHandleSimpleForm(t *testing.T) {
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest(http.MethodPost, "/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,13 +23,13 @@ func TestHandleSimpleForm(t *testing.T) {
 }
 
 func TestHandleSimpleFormWithValidation(t *testing.T) {
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest(http.MethodPost, "/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(handleFormWithFile)
+	handler := http.HandlerFunc(handleFormWithMultiFile)
 
 	handler.ServeHTTP(rr, req)
 
