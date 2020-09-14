@@ -24,10 +24,10 @@ Example code for:
 - form post success responses
 - form post success thank you page
 - restricting submissions to a given request domain
-- Protect against: posting massive form body
-- Protect against: CSRF
-- Protect against: Slowloris
-- Protect against: injection via form names and values
+- protect against: posting massive form body
+- protect against: CSRF
+- protect against: Slowloris
+- protect against: injection via form names and values
 
 ## Form requests
 
@@ -49,6 +49,8 @@ Sources:
 ## Go handling forms
 
 - https://medium.com/@owlwalks/dont-parse-everything-from-client-multipart-post-golang-9280d23cd4ad
+- https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/04.5.html
+
 
 ## Form rules
 
@@ -58,6 +60,8 @@ Sources:
 Open Questions:
 
 - allow `multi` tag on input file elements?
+    - it's doable but invites more complexity
+- what happens when you don't define a form "method" tag? Is there a default?
 
 ## Libraries
 
