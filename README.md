@@ -50,6 +50,14 @@ Sources:
 
 - https://medium.com/@owlwalks/dont-parse-everything-from-client-multipart-post-golang-9280d23cd4ad
 
+## Form rules
+
+- when dealing with file uploads, require Content-Type `multipart/form-data`
+- only accept non `GET` method on form element
+
+Open Questions:
+
+- allow `multi` tag on input file elements?
 
 ## Libraries
 

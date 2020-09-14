@@ -29,7 +29,7 @@ func TestHandleSimpleFormWithValidation(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(handleSimpleFormWithValidation)
+	handler := http.HandlerFunc(handleFormWithFile)
 
 	handler.ServeHTTP(rr, req)
 
