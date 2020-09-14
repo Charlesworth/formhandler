@@ -5,13 +5,19 @@ import (
 	"net/http"
 )
 
-type ContactDetails struct {
-	Email   string
-	Subject string
-	Message string
+func main() {
+	http.HandleFunc("/simpleForm", handleSimpleForm)
+
+	http.ListenAndServe(":8080", nil)
 }
 
-func handlePost(w http.ResponseWriter, r *http.Request) {
+func handleSimpleForm(w http.ResponseWriter, r *http.Request) {
+	type ContactDetails struct {
+		Email   string
+		Subject string
+		Message string
+	}
+
 	if r.Method != http.MethodPost {
 		w.WriteHeader(500)
 		return
@@ -23,14 +29,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		Message: r.FormValue("message"),
 	}
 
-	// do something with details
 	fmt.Printf("%+v\n", details)
 
 	w.WriteHeader(200)
-}
-
-func main() {
-	http.HandleFunc("/", handlePost)
-
-	http.ListenAndServe(":8080", nil)
 }
