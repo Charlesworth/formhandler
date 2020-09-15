@@ -21,6 +21,8 @@ func main() {
 	r.HandleFunc("/singleFile", handleTemplate("formTemplates/singleFile.tmpl", addr+"/file")).Methods(http.MethodGet)
 	r.HandleFunc("/multiFile", handleTemplate("formTemplates/multiFile.tmpl", addr+"/file")).Methods(http.MethodGet)
 
+	r.HandleFunc("/complex", handleTemplate("formTemplates/complex.tmpl", addr+"/complex")).Methods(http.MethodGet)
+
 	http.ListenAndServe(port, r)
 }
 
