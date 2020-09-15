@@ -22,6 +22,7 @@ func main() {
 	r.HandleFunc("/multiFile", handleTemplate("formTemplates/multiFile.tmpl", addr+"/file")).Methods(http.MethodGet)
 
 	r.HandleFunc("/complex", handleTemplate("formTemplates/complex.tmpl", addr+"/complex")).Methods(http.MethodGet)
+	r.HandleFunc("/complex", handlePrintForm).Methods(http.MethodPost)
 
 	http.ListenAndServe(port, r)
 }
@@ -57,7 +58,7 @@ func handleSimpleForm(w http.ResponseWriter, r *http.Request) {
 func handleFormWithMultiFile(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
 	if err != nil {
-		log.Println("can't parse form")
+		log.Println("can't parse form: ", err.Error())
 		w.WriteHeader(400)
 		return
 	}
@@ -72,6 +73,33 @@ func handleFormWithMultiFile(w http.ResponseWriter, r *http.Request) {
 
 	for _, fileHeader := range fhs {
 		fmt.Printf("name: %s, size: %v\n", fileHeader.Filename, fileHeader.Size)
+	}
+
+	w.WriteHeader(200)
+}
+
+func handlePrintForm(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
+	if err != nil {
+		log.Println("can't parse form: ", err.Error())
+		w.WriteHeader(400)
+		return
+	}
+
+	for field, values := range r.PostForm {
+		fmt.Printf("field: %v, values: %v\n", field, values)
+	}
+
+	for field, fileHeaders := range r.MultipartForm.File {
+		fileNames := []string{}
+		for _, fileHeader := range fileHeaders {
+			if len(fileNames) == 0 {
+				fileNames = []string{fileHeader.Filename}
+			} else {
+				fileNames = append(fileNames, fileHeader.Filename)
+			}
+		}
+		fmt.Printf("field: %v, files: %v\n", field, fileNames)
 	}
 
 	w.WriteHeader(200)
