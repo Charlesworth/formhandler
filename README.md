@@ -13,18 +13,19 @@ This should help me form the basis around a good design for safely handling form
 ## Goals
 
 Example code for:
-- multipart forms
-- excluding query string values when parsing forms
+- all valid input types
+- `application/x-www-form-urlencoded` and `multipart/form-data` form enctypes
+- exclusively non-`GET` forms
 - simple server side form validation
 - dynamic server side form validation
 - forms uploading a single file
-- forms uploading a multiple files
+- forms uploading multiple files via a single input using the "multiple" tag
+- forms uploading a multiple files via multiple inputs
 - forms input files using "accept" tag for certain file types
-- forms input files using "multiple" tag
-- form post success responses
-- form post success thank you page
+- form post success responses (i.e. a "thank you" page)
 - restricting submissions to a given request domain
 - protect against: posting massive form body
+- protect against: large amounts of files via "multiple" file inputs
 - protect against: CSRF
 - protect against: Slowloris
 - protect against: injection via form names and values
