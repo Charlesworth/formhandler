@@ -85,3 +85,118 @@ validation:
 CSRF protection middleware
 - https://github.com/gorilla/csrf
 - https://github.com/justinas/nosurf
+
+## Input types
+
+[source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)
+
+### Email
+
+	<input type="email" id="email" name="email">
+
+### Search XXX
+
+	<input type="search" id="search" name="search">
+
+### Phone number field
+
+	<input type="tel" id="tel" name="tel">
+
+### URL
+
+	<input type="url" id="url" name="url">
+
+### Numeric
+
+	<input type="number" name="age" id="age" min="1" max="10" step="2">
+	<input type="number" name="change" id="pennies" min="0" max="1" step="0.01">
+
+### Slider
+
+	<label for="price">Choose a maximum house price: </label>
+	<input type="range" name="price" id="price" min="50000" max="500000" step="100" value="250000">
+	<output class="price-output" for="price"></output>
+
+### Datetime-local
+
+	<input type="datetime-local" name="datetime" id="datetime">
+
+### Datetime
+
+	[Shouldn't be used](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/datetime)
+
+### Date
+
+	<input type="date" id="start" name="trip-start" value="2018-07-22" min="2018-01-01" max="2018-12-31">
+
+### Month
+
+	<input type="month" name="month" id="month">
+
+### Time
+
+	<input type="time" name="time" id="time">
+
+### Week
+
+	<input type="week" name="week" id="week">
+
+### Color
+
+	<input type="color" name="color" id="color">
+
+### Multiline text
+
+	<textarea cols="30" rows="8"></textarea>
+
+### Drop down
+
+	<select id="simple" name="simple">
+	  <option>Banana</option>
+	  <option selected>Cherry</option>
+	  <option>Lemon</option>
+	</select>
+
+with multiple choice
+
+	<select id="multi" name="multi" multiple size="2">
+	  <optgroup label="fruits">
+	     <option>Banana</option>
+	     <option selected>Cherry</option>
+	     <option>Lemon</option>
+	   </optgroup>
+	   <optgroup label="vegetables">
+	     <option>Carrot</option>
+	     <option>Eggplant</option>
+	     <option>Potato</option>
+	   </optgroup>
+	</select>
+
+### File
+
+	<input type="file" id="avatar" name="avatar" accept="image/png, image/jpeg">
+
+
+### Password
+
+	<input type="password" id="pass" name="password" minlength="8" required>
+
+### Radio
+
+	<input type="radio" id="contactChoice1" name="contact" value="email" checked>
+	<label for="contactChoice1">Email</label>
+	<input type="radio" id="contactChoice2" name="contact" value="phone">
+	<label for="contactChoice2">Phone</label>
+	<input type="radio" id="contactChoice3" name="contact" value="mail">
+	<label for="contactChoice3">Mail</label>
+
+### Range
+
+	<input type="range" id="volume" name="volume" min="0" max="11">
+
+### Checkbox
+
+	<input type="checkbox" id="coding" name="interest" value="coding">
+	<label for="coding">Coding</label>
+	<input type="checkbox" id="music" name="interest" value="music">
+	<label for="music">Music</label>
