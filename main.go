@@ -38,20 +38,24 @@ func handleTemplate(tmplFile string, formEnpoint string) func(w http.ResponseWri
 }
 
 func handleSimpleForm(w http.ResponseWriter, r *http.Request) {
-	type SimpleForm struct {
-		Email   string
-		Subject string
-		Message string
+	if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+		errMsg := "Incorrect content type"
+		log.Println(errMsg)
+		w.WriteHeader(400)
+		fmt.Fprintf(w, errMsg)
+		return
 	}
 
-	details := SimpleForm{
-		Email:   r.FormValue("email"),
-		Subject: r.FormValue("subject"),
-		Message: r.FormValue("message"),
+	fields := []string{"email", "subject", "message"}
+	results, err := parseFormURLEncoded(fields, r)
+	if err != nil {
+		log.Println(err.Error())
+		w.WriteHeader(400)
+		fmt.Fprintf(w, err.Error())
+		return
 	}
 
-	fmt.Printf("%+v\n", details)
-
+	fmt.Printf("%+v\n", results)
 	w.WriteHeader(200)
 }
 
@@ -102,5 +106,34 @@ func handlePrintForm(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("field: %v, files: %v\n", field, fileNames)
 	}
 
-	w.WriteHeader(200)
+	// fmt.Fprintf(w, `Success!`)
+	// w.WriteHeader(200)
+
+	w.Header().Set("Location", "https://charlescochrane.com/")
+	w.WriteHeader(302)
+}
+
+// TODO: add required and non required fields
+func parseFormURLEncoded(fields []string, r *http.Request) (results map[string][]string, err error) {
+	// Body reader size is capped at 10MB when using ParseForm()
+	err = r.ParseForm()
+	if err != nil {
+		return nil, err
+	}
+
+	results = map[string][]string{}
+	missingFields := []string{}
+	for _, field := range fields {
+		values := r.Form[field]
+		if values == nil || len(values) == 0 || values[0] == "" {
+			missingFields = append(missingFields, field)
+		} else {
+			results[field] = values
+		}
+	}
+
+	if len(missingFields) > 0 {
+		return nil, fmt.Errorf(`Form submission was missing the following required fields: %v`, missingFields)
+	}
+	return results, nil
 }
