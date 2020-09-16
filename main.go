@@ -4,9 +4,17 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
+)
+
+const (
+	headerKeyContentType    = "Content-Type"
+	headerValFormURLEncoded = "application/x-www-form-urlencoded"
+	headerValFormMultipart  = "multipart/form-data"
 )
 
 func main() {
@@ -14,15 +22,13 @@ func main() {
 	addr := "localhost" + port
 	r := mux.NewRouter()
 
-	r.HandleFunc("/simple", handleSimpleForm).Methods(http.MethodPost)
-	r.HandleFunc("/simple", handleTemplate("formTemplates/simple.tmpl", addr+"/simple")).Methods(http.MethodGet)
+	r.HandleFunc("/form", handleForm).Methods(http.MethodPost)
+	formSubmissionEndpoint := addr + "/form"
 
-	r.HandleFunc("/file", handleFormWithMultiFile).Methods(http.MethodPost)
-	r.HandleFunc("/singleFile", handleTemplate("formTemplates/singleFile.tmpl", addr+"/file")).Methods(http.MethodGet)
-	r.HandleFunc("/multiFile", handleTemplate("formTemplates/multiFile.tmpl", addr+"/file")).Methods(http.MethodGet)
-
-	r.HandleFunc("/complex", handleTemplate("formTemplates/complex.tmpl", addr+"/complex")).Methods(http.MethodGet)
-	r.HandleFunc("/complex", handlePrintForm).Methods(http.MethodPost)
+	r.HandleFunc("/simple", handleTemplate("formTemplates/simple.tmpl", formSubmissionEndpoint)).Methods(http.MethodGet)
+	r.HandleFunc("/singleFile", handleTemplate("formTemplates/singleFile.tmpl", formSubmissionEndpoint)).Methods(http.MethodGet)
+	r.HandleFunc("/multiFile", handleTemplate("formTemplates/multiFile.tmpl", formSubmissionEndpoint)).Methods(http.MethodGet)
+	r.HandleFunc("/complex", handleTemplate("formTemplates/complex.tmpl", formSubmissionEndpoint)).Methods(http.MethodGet)
 
 	http.ListenAndServe(port, r)
 }
@@ -37,103 +43,69 @@ func handleTemplate(tmplFile string, formEnpoint string) func(w http.ResponseWri
 	}
 }
 
-func handleSimpleForm(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
-		errMsg := "Incorrect content type"
-		log.Println(errMsg)
-		w.WriteHeader(400)
-		fmt.Fprintf(w, errMsg)
-		return
-	}
+func handleForm(w http.ResponseWriter, r *http.Request) {
+	results, files, err := getFormContent(r)
 
-	fields := []string{"email", "subject", "message"}
-	results, err := parseFormURLEncoded(fields, r)
 	if err != nil {
-		log.Println(err.Error())
+		log.Println("Error: ", err.Error())
 		w.WriteHeader(400)
 		fmt.Fprintf(w, err.Error())
 		return
 	}
 
-	fmt.Printf("%+v\n", results)
+	fmt.Printf("Form Results (len %v): %+v\n", len(results), results)
+	fmt.Printf("Form Files (len %v): %+v\n", len(files), files)
 	w.WriteHeader(200)
 }
 
-func handleFormWithMultiFile(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
-	if err != nil {
-		log.Println("can't parse form: ", err.Error())
-		w.WriteHeader(400)
-		return
+func getFormContent(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	contentType := r.Header.Get(headerKeyContentType)
+	if contentType == headerValFormURLEncoded {
+		results, err := parseFormURLEncoded(r)
+		return results, nil, err
 	}
-
-	// rework the stdlib FormFile to cycle through the files here
-	fhs := r.MultipartForm.File["file"]
-	if len(fhs) == 0 {
-		log.Println("no files")
-		w.WriteHeader(400)
-		return
+	if strings.HasPrefix(contentType, headerValFormMultipart) {
+		return parseFormMultipart(r)
 	}
-
-	for _, fileHeader := range fhs {
-		fmt.Printf("name: %s, size: %v\n", fileHeader.Filename, fileHeader.Size)
-	}
-
-	w.WriteHeader(200)
+	return nil, nil, fmt.Errorf(`Unsupported content type "%v", please use "%v" or "%v"`, contentType, headerValFormMultipart, headerValFormURLEncoded)
 }
 
-func handlePrintForm(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
-	if err != nil {
-		log.Println("can't parse form: ", err.Error())
-		w.WriteHeader(400)
-		return
-	}
-
-	for field, values := range r.PostForm {
-		fmt.Printf("field: %v, values: %v\n", field, values)
-	}
-
-	for field, fileHeaders := range r.MultipartForm.File {
-		fileNames := []string{}
-		for _, fileHeader := range fileHeaders {
-			if len(fileNames) == 0 {
-				fileNames = []string{fileHeader.Filename}
-			} else {
-				fileNames = append(fileNames, fileHeader.Filename)
-			}
-		}
-		fmt.Printf("field: %v, files: %v\n", field, fileNames)
-	}
-
-	// fmt.Fprintf(w, `Success!`)
-	// w.WriteHeader(200)
-
-	w.Header().Set("Location", "https://charlescochrane.com/")
-	w.WriteHeader(302)
-}
-
-// TODO: add required and non required fields
-func parseFormURLEncoded(fields []string, r *http.Request) (results map[string][]string, err error) {
+func parseFormURLEncoded(r *http.Request) (results map[string][]string, err error) {
 	// Body reader size is capped at 10MB when using ParseForm()
 	err = r.ParseForm()
 	if err != nil {
+		// TODO: server or user error?
 		return nil, err
 	}
 
-	results = map[string][]string{}
-	missingFields := []string{}
-	for _, field := range fields {
-		values := r.Form[field]
-		if values == nil || len(values) == 0 || values[0] == "" {
-			missingFields = append(missingFields, field)
-		} else {
-			results[field] = values
-		}
-	}
+	results = r.Form
+	reduceUnansweredFields(results)
 
-	if len(missingFields) > 0 {
-		return nil, fmt.Errorf(`Form submission was missing the following required fields: %v`, missingFields)
-	}
 	return results, nil
 }
+
+func parseFormMultipart(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	err = r.ParseMultipartForm(32 << 20) // maxMemory 32MB
+	if err != nil {
+		// TODO: server or user error?
+		return nil, nil, err
+	}
+
+	results = r.PostForm
+	reduceUnansweredFields(results)
+
+	return results, r.MultipartForm.File, nil
+}
+
+func reduceUnansweredFields(results map[string][]string) {
+	// unanswered fields are encoded as an empty []string, these are removed
+	for field, values := range results {
+		if values == nil || len(values) == 0 || (len(values) == 1 && values[0] == "") {
+			delete(results, field)
+		}
+	}
+}
+
+// TODO: use for thankyou redirect
+// w.Header().Set("Location", "https://example.com/")
+// w.WriteHeader(302)
