@@ -1,20 +1,20 @@
 # skunkworksForms: example code for handling HTML forms in Go
 
-Playing around exaustively with accepting forms via a Go web server for another project.
+Playing around exhaustively with accepting forms via a Go web server for another project.
 The code should handle:
 
 - all valid form input types
 - `application/x-www-form-urlencoded` and `multipart/form-data` form enctypes
 - exclusively non-`GET` forms
-- simple server side form validation
-- dynamic server side form validation
 - forms uploading a single file
-- forms uploading multiple files via a single input using the `multiple` tag
+- forms uploading multiple files via a single input using the `multiple` attribute
 - forms uploading multiple files via multiple inputs
 - form post success responses (i.e. a "thank you" page)
+- simple server side form validation
+- dynamic server side form validation
 - restricting submissions to a given request domain
 - protect against: posting massive form body
-- protect against: large amounts of files via `multiple` tag file inputs
+- protect against: large amounts of files via `multiple` attribute file inputs
 - protect against: CSRF
 - protect against: slowloris
 - protect against: injection via form names and values
@@ -33,7 +33,7 @@ For this reason it is useful to simply refuse requests with files that use `appl
 You could also use JS to encode your forms into whatever you wanted, i.e. encode to JSON or XML and send that.
 This repo is not covering those use cases.
 
-## Form HTML inputs
+### Form HTML inputs
 
 All of these input types should be supported, including the cases with support the `multiple` HTML attribute ([source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)).
 
@@ -64,35 +64,37 @@ Non inputs types:
 - Multi-line text fields with `textarea`
 - Drop-down select with `select`
 
-## Open Questions
+### Method
 
-- what happens when you don't define a form "method" tag? Is there a default?
+What happens when you don't define a form "method" attribute? Is there a default?
 
 ## Links
 
-### Go handling forms
+### Go form handling code specifics
 
 - <https://medium.com/@owlwalks/dont-parse-everything-from-client-multipart-post-golang-9280d23cd4ad>
 - <https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/04.5.html>
+- <https://ayada.dev/posts/multipart-requests-in-go/>
+- <https://www.reddit.com/r/golang/comments/apf6l5/multiple_files_upload_using_gos_standard_library/>
 
 ## Useful Go libraries
 
 Value sanitizer:
 
-- <https://github.com/leebenson/conform>
+- <https://github.com/leebenson/conform> Don't need this, it's the form validation responsibility
 
 Request to struct:
 
-- <https://github.com/gorilla/schema>
-- <https://github.com/go-playground/form>
-- <https://github.com/mholt/binding>
+- <https://github.com/gorilla/schema> X no file support, requires structs
+- <https://github.com/go-playground/form> X no file support, requires structs
+- <https://github.com/mholt/binding> This could work for `application/x-www-form-urlencoded` although not convinced for multipart
 
 Validation:
 
-- <https://github.com/go-playground/validator>
-- <https://github.com/asaskevich/govalidator>
-- <https://github.com/go-ozzo/ozzo-validation>
-- <https://github.com/astaxie/beego/tree/develop/validation>
+- <https://github.com/go-playground/validator> X requires a struct
+- <https://github.com/asaskevich/govalidator> Calling the validation functions could be useful
+- <https://github.com/go-ozzo/ozzo-validation> Validator can be constructed dynamically, provides a nice error message and uses govalidator under the covers
+- <https://github.com/astaxie/beego/tree/develop/validation> Very basic and specific to Beego framework
 
 CSRF protection middleware
 
