@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -20,7 +21,6 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 		testRequestConstructor func() (req *http.Request, err error)
 		expectedValuesOutput   map[string][]string
 	}{
-
 		{
 			"No fields",
 			func() (*http.Request, error) {
@@ -107,158 +107,194 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 
 			results, files, err := getFormContent(r)
 
+			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
+
 			assert.Empty(t, files, "unexpected file parsed from url encoded form")
 		})
 	}
 }
 
-// func TestGetFormContent_Values(t *testing.T) {
-// 	var formContentTests = []struct {
-// 		testName               string
-// 		testRequestConstructor func() (req *http.Request, cleanupFunc func(), err error)
-// 		expectedValuesOutput   map[string][]string
-// 	}{
+func TestGetFormContent_Multipart(t *testing.T) {
+	var formContentTests = []struct {
+		testName               string
+		testRequestConstructor func() (req *http.Request, cleanupFunc func(), err error)
+		expectedValuesOutput   map[string][]string
+		expectedFileCounts     map[string]int
+	}{
+		{
+			"empty form",
+			func() (*http.Request, func(), error) {
+				values := map[string]io.Reader{}
+				req, err := constructMultipartForm(values)
 
-// 		// URL encoded forms
-// 		{
-// 			"url encoded form with no fields",
-// 			func() (*http.Request, func(), error) {
-// 				return constructURLEncodedForm(url.Values{})
-// 			},
-// 			map[string][]string{},
-// 		},
-// 		// single value field with [none] value
-// 		// single value field with [one] value
-// 		// single value field with [multiple] value
-// 		// multiple value fields with [none] value
-// 		// multiple value fields with [one] value
-// 		// multiple value fields with [one, none] value
-// 		// multiple value fields with [multiple] value
-// 		// multiple value fields with [multiple, none] value
-// 		// multiple value fields with [multiple, one] value
-// 		// multiple value fields with [multiple, none, one] value
-// 		{
-// 			"url encoded form with only empty fields",
-// 			func() (*http.Request, func(), error) {
-// 				return constructURLEncodedForm(url.Values{"field1": {}, "field2": {}})
-// 			},
-// 			map[string][]string{},
-// 		},
-// 		{
-// 			"url encoded form with some filled and some empty fields",
-// 			func() (*http.Request, func(), error) {
-// 				return constructURLEncodedForm(url.Values{"field1": {"value1"}, "field2": {}})
-// 			},
-// 			map[string][]string{"field1": {"value1"}},
-// 		},
-// 		{
-// 			"url encoded form with no empty fields",
-// 			func() (*http.Request, func(), error) {
-// 				return constructURLEncodedForm(url.Values{"field1": {"value1"}, "field2": {"value2"}})
-// 			},
-// 			map[string][]string{"field1": {"value1"}, "field2": {"value2"}},
-// 		},
+				return req, func() {}, err
+			},
+			map[string][]string{},
+			nil,
+		},
+		{
+			"single field",
+			func() (*http.Request, func(), error) {
+				values := map[string]io.Reader{
+					"field1": strings.NewReader("value1"),
+				}
+				req, err := constructMultipartForm(values)
 
-// 		// Multipart forms
-// 		{
-// 			"multipart form with no empty fields and a single non-multiple file",
-// 			func() (*http.Request, func(), error) {
-// 				values := map[string]io.Reader{
-// 					"field1": strings.NewReader("value1"),
-// 				}
-// 				req, err := constructMultipartForm(values)
+				return req, func() {}, err
+			},
+			map[string][]string{"field1": {"value1"}},
+			nil,
+		},
+		{
+			"single field single file",
+			func() (*http.Request, func(), error) {
+				testFile1, testFile1CleanUp, err := tempTestFile("png")
+				values := map[string]io.Reader{
+					"file1":  testFile1,
+					"field1": strings.NewReader("value1"),
+				}
+				req, err := constructMultipartForm(values)
 
-// 				return req, nil, err
-// 			},
-// 			map[string][]string{"field1": {"value1"}},
-// 		},
-// 		{
-// 			"multipart form with no empty fields",
-// 			func() (*http.Request, func(), error) {
-// 				values := map[string]io.Reader{
-// 					"field1": strings.NewReader("value1"),
-// 				}
-// 				req, err := constructMultipartForm(values)
+				return req, testFile1CleanUp, err
+			},
+			map[string][]string{"field1": {"value1"}},
+			map[string]int{"file1": 1},
+		},
+		{
+			"multiple fields single file",
+			func() (*http.Request, func(), error) {
+				testFile1, testFile1CleanUp, err := tempTestFile("png")
+				values := map[string]io.Reader{
+					"file1":  testFile1,
+					"field1": strings.NewReader("value1"),
+					"field2": strings.NewReader("value2"),
+				}
+				req, err := constructMultipartForm(values)
 
-// 				return req, func() {}, err
-// 			},
-// 			map[string][]string{"field1": {"value1"}},
-// 		},
+				return req, testFile1CleanUp, err
+			},
+			map[string][]string{"field1": {"value1"}, "field2": {"value2"}},
+			map[string]int{"file1": 1},
+		},
+		{
+			"single file",
+			func() (*http.Request, func(), error) {
+				testFile1, testFile1CleanUp, err := tempTestFile("png")
+				values := map[string]io.Reader{
+					"file1": testFile1,
+				}
+				req, err := constructMultipartForm(values)
 
-// !!! no fields
-// no fields
-// !!! no fields
+				return req, testFile1CleanUp, err
+			},
+			map[string][]string{},
+			map[string]int{"file1": 1},
+		},
+		{
+			"multiple file",
+			func() (*http.Request, func(), error) {
+				testFile1, testFile1CleanUp, err := tempTestFile("png")
+				testFile2, testFile2CleanUp, err := tempTestFile("png")
+				values := map[string]io.Reader{
+					"file1": testFile1,
+					"file2": testFile2,
+				}
+				req, err := constructMultipartForm(values)
 
-// !!! file fields
-// single file field with [none] files
-// single file field with [one] files
-// single file field with [multiple] files
-// multiple file fields with [none] files
-// multiple file fields with [one] files
-// multiple file fields with [one, none] files
-// multiple file fields with [multiple] files
-// multiple file fields with [multiple, none] files
-// multiple file fields with [multiple, one] files
-// multiple file fields with [multiple, none, one] files
-// !!! file fields
+				return req, func() {
+					testFile1CleanUp()
+					testFile2CleanUp()
+				}, err
+			},
+			map[string][]string{},
+			map[string]int{"file1": 1, "file2": 1},
+		},
+		{
+			"multiple fields multiple file",
+			func() (*http.Request, func(), error) {
+				testFile1, testFile1CleanUp, err := tempTestFile("png")
+				testFile2, testFile2CleanUp, err := tempTestFile("png")
+				values := map[string]io.Reader{
+					"file1":  testFile1,
+					"file2":  testFile2,
+					"field1": strings.NewReader("value1"),
+					"field2": strings.NewReader("value2"),
+				}
+				req, err := constructMultipartForm(values)
 
-// !!! value fields
-// single value field with [none] value
-// single value field with [one] value
-// single value field with [multiple] value
-// multiple value fields with [none] value
-// multiple value fields with [one] value
-// multiple value fields with [one, none] value
-// multiple value fields with [multiple] value
-// multiple value fields with [multiple, none] value
-// multiple value fields with [multiple, one] value
-// multiple value fields with [multiple, none, one] value
-// !!! value fields
+				return req, func() {
+					testFile1CleanUp()
+					testFile2CleanUp()
+				}, err
+			},
+			map[string][]string{"field1": {"value1"}, "field2": {"value2"}},
+			map[string]int{"file1": 1, "file2": 1},
+		},
+	}
 
-// !!! file and value fields
+	for _, tt := range formContentTests {
+		t.Run(tt.testName, func(t *testing.T) {
+			r, cleanup, err := tt.testRequestConstructor()
+			assert.NoError(t, err)
 
-// !!! file and value fields
+			results, files, err := getFormContent(r)
 
-// 	}
+			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
 
-// 	for _, tt := range formContentTests {
-// 		t.Run(tt.testName, func(t *testing.T) {
-// 			r, cleanup, err := tt.testRequestConstructor()
-// 			assert.NoError(t, err)
+			assert.Equal(t, len(files), len(tt.expectedFileCounts), "unexpected files fields present")
+			if len(files) > 0 {
+				// check the maps match
+				for fileName, count := range tt.expectedFileCounts {
+					assert.Equal(t, count, len(files[fileName]),
+						fmt.Sprintf("Mismatched amount of files parsed for %v", fileName))
+				}
+			}
 
-// 			results, _, err := getFormContent(r)
+			cleanup()
+		})
+	}
+}
 
-// 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
+/*
+To test the all combinations multipart form, all of these cases need to be covered:
 
-// 			// TODO: this doesn't account for "multiple" attribute files
-// 			// assert.Equal(t, tt.expectedFileCount, files, "unexpected form files")
+- no fields
+  - no fields
 
-// 			cleanup()
-// 		})
-// 	}
-// }
+- file fields
+  - single file field with [none] files
+  - single file field with [one] files
+  - single file field with [multiple] files
+  - multiple file fields with [none] files
+  - multiple file fields with [one] files
+  - multiple file fields with [one, none] files
+  - multiple file fields with [multiple] files
+  - multiple file fields with [multiple, none] files
+  - multiple file fields with [multiple, one] files
+  - multiple file fields with [multiple, none, one] files
+
+- value fields
+  - single value field with [none] value
+  - single value field with [one] value
+  - single value field with [multiple] value
+  - multiple value fields with [none] value
+  - multiple value fields with [one] value
+  - multiple value fields with [one, none] value
+  - multiple value fields with [multiple] value
+  - multiple value fields with [multiple, none] value
+  - multiple value fields with [multiple, one] value
+  - multiple value fields with [multiple, none, one] value
+
+- every combination of file and value fields
+
+*/
 
 func constructURLEncodedForm(values url.Values) (*http.Request, error) {
 	r, err := http.NewRequest(http.MethodPost, "/", strings.NewReader(values.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return r, err
 }
-
-// {
-// 	"multipart form with no empty fields and a single non-multiple file",
-// 	func() (*http.Request, func(), error) {
-// 		testFile1, testFile1CleanUp, err := tempTestFile("png")
-// 		values := map[string]io.Reader{
-// 			"file1":  testFile1,
-// 			"field1": strings.NewReader("value1"),
-// 		}
-// 		req, err := constructMultipartForm(values)
-
-// 		return req, testFile1CleanUp, err
-// 	},
-// 	map[string][]string{"field1": {"value1"}},
-// },
 
 func tempTestFile(fileSuffix string) (file *os.File, cleanupFunc func(), err error) {
 	file, err = ioutil.TempFile(os.TempDir(), "testFile-*."+fileSuffix)
@@ -281,7 +317,6 @@ func tempTestFile(fileSuffix string) (file *os.File, cleanupFunc func(), err err
 }
 
 func constructMultipartForm(values map[string]io.Reader) (r *http.Request, err error) {
-	// Prepare a form that you will submit to that URL.
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
 	for key, r := range values {
@@ -305,16 +340,15 @@ func constructMultipartForm(values map[string]io.Reader) (r *http.Request, err e
 		}
 	}
 
-	// Don't forget to close the multipart writer.
-	// If you don't close it, your request will be missing the terminating boundary.
+	// closing the multipart writer adds the terminating boundary
 	w.Close()
 
-	// Now that you have a form, you can submit it to your handler.
 	req, err := http.NewRequest(http.MethodPost, "/", &b)
 	if err != nil {
 		return nil, err
 	}
-	// Don't forget to set the content type, this will contain the boundary.
+
+	// set the content type, this will contain the boundary
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	return req, err
 }
