@@ -105,7 +105,3 @@ func reduceUnansweredFields(results map[string][]string) {
 		}
 	}
 }
-
-// TODO: use for thankyou redirect
-// w.Header().Set("Location", "https://example.com/")
-// w.WriteHeader(302)
