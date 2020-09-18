@@ -1,4 +1,4 @@
-# skunkworksForms: example code for handling HTML forms in Go
+# formsExample: example code for handling HTML forms in Go
 
 Playing around exhaustively with accepting forms via a Go web server for another project.
 The code should handle:
@@ -9,7 +9,8 @@ The code should handle:
 - forms uploading a single file
 - forms uploading multiple files via a single input using the `multiple` attribute
 - forms uploading multiple files via multiple inputs
-- form post success responses (i.e. a "thank you" page)
+- form submission responses (i.e. a "thank you" page)
+- form submission redirects (i.e. to another site)
 - simple server side form validation
 - dynamic server side form validation
 - restricting submissions to a given request domain
@@ -19,7 +20,7 @@ The code should handle:
 - protect against: slowloris
 - protect against: injection via form names and values
 
-## Form HTTP requests
+## Form requests
 
 ### Content-Type
 
@@ -33,9 +34,9 @@ For this reason it is useful to simply refuse requests with files that use `appl
 You could also use JS to encode your forms into whatever you wanted, i.e. encode to JSON or XML and send that.
 This repo is not covering those use cases.
 
-### Form HTML inputs
+### Form inputs
 
-All of these input types should be supported, including the cases with support the `multiple` HTML attribute ([source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)).
+All of these HTML input types should be supported, including the cases with support the `multiple` HTML attribute ([source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)).
 
 Input types:
 
@@ -64,9 +65,18 @@ Non inputs types:
 - Multi-line text fields with `textarea`
 - Drop-down select with `select`
 
-### Method
+To simplify what can be stored on the server, non-empty inputs consist of 4 different types:
 
-What happens when you don't define a form "method" attribute? Is there a default?
+- a file: where the file input is used without the `multiple` attribute
+- multiple files: where the file input is used with the `multiple` attribute
+- a string: any non-file input not using the `multiple` attribute
+- an array of strings: any non-file input that supports and uses the `multiple` attribute
+
+For this usecase we can ignore empty fields, they will not be stored and should be removed when parsing the form request.
+
+### HTTP Method
+
+While `GET` and `POST` can be used, we will only accept `method="POST"`, this is easy to handle by limiting the handler to only accept `POST` requests. Delivering form data in the URL could be insecure in some situations so best for my case to avoid entirely.
 
 ## Links
 
@@ -81,20 +91,20 @@ What happens when you don't define a form "method" attribute? Is there a default
 
 Value sanitizer:
 
-- <https://github.com/leebenson/conform> Don't need this, it's the form validation responsibility
+- <https://github.com/leebenson/conform> Good if you need to sanitise the form data.
 
 Request to struct:
 
-- <https://github.com/gorilla/schema> X no file support, requires structs
-- <https://github.com/go-playground/form> X no file support, requires structs
-- <https://github.com/mholt/binding> This could work for `application/x-www-form-urlencoded` although not convinced for multipart
+- <https://github.com/gorilla/schema> No file support and requires struct tags.
+- <https://github.com/go-playground/form> No file support and requires struct tags.
+- <https://github.com/mholt/binding> No struct tags required and supports files via multipart.
 
 Validation:
 
-- <https://github.com/go-playground/validator> X requires a struct
-- <https://github.com/asaskevich/govalidator> Calling the validation functions could be useful
-- <https://github.com/go-ozzo/ozzo-validation> Validator can be constructed dynamically, provides a nice error message and uses govalidator under the covers
-- <https://github.com/astaxie/beego/tree/develop/validation> Very basic and specific to Beego framework
+- <https://github.com/go-playground/validator> Requires struct tags.
+- <https://github.com/asaskevich/govalidator> Loads of useful validation functions.
+- <https://github.com/go-ozzo/ozzo-validation> Validator can be constructed dynamically, provides nice error messages and uses govalidator under the covers for masses for validation functions.
+- <https://github.com/astaxie/beego/tree/develop/validation> Very basic and specific to Beego framework.
 
 CSRF protection middleware
 
