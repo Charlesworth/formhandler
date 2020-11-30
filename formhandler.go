@@ -1,4 +1,4 @@
-package forms
+package formhandler
 
 import (
 	"encoding/json"
