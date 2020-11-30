@@ -180,7 +180,6 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 			r, err := tt.testRequestConstructor()
 			assert.NoError(t, err, "Error constructing test request")
 
-			// TODO: check the w
 			w := httptest.NewRecorder()
 			results, files, err := getFormContent(w, r)
 
@@ -283,7 +282,6 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 			r, err := tt.testRequestConstructor()
 			assert.NoError(t, err, "Error constructing test request")
 
-			// TODO: check the w
 			w := httptest.NewRecorder()
 			results, files, err := getFormContent(w, r)
 
@@ -418,7 +416,6 @@ func TestGetFormContent_Multipart(t *testing.T) {
 			r, cleanup, err := tt.testRequestConstructor()
 			assert.NoError(t, err)
 
-			// TODO: check the w
 			w := httptest.NewRecorder()
 			results, files, err := getFormContent(w, r)
 
@@ -436,6 +433,32 @@ func TestGetFormContent_Multipart(t *testing.T) {
 			cleanup()
 		})
 	}
+}
+
+func TestInvalidContentType(t *testing.T) {
+	r, err := http.NewRequest(http.MethodPost, "/", nil)
+	assert.NoError(t, err)
+
+	r.Header.Set("Content-Type", "application/fake-test-content-type")
+
+	w := httptest.NewRecorder()
+	results, files, err := getFormContent(w, r)
+
+	assert.Nil(t, results)
+	assert.Nil(t, files)
+	assert.NotNil(t, err)
+}
+
+func TestMissingContentType(t *testing.T) {
+	r, err := http.NewRequest(http.MethodPost, "/", nil)
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	results, files, err := getFormContent(w, r)
+
+	assert.Nil(t, results)
+	assert.Nil(t, files)
+	assert.NotNil(t, err)
 }
 
 /*
@@ -471,6 +494,7 @@ To test the all combinations multipart form, all of these cases need to be cover
 - every combination of file and value fields
 
 */
+
 func constructJSONEncodedForm(jsonStr string) (*http.Request, error) {
 	r, err := http.NewRequest(http.MethodPost, "/", strings.NewReader(jsonStr))
 	r.Header.Set("Content-Type", "application/json")
@@ -494,11 +518,6 @@ func tempTestFile(fileSuffix string) (file *os.File, cleanupFunc func(), err err
 	if _, err = file.Write(text); err != nil {
 		return nil, nil, err
 	}
-
-	// // Close the file
-	// if err := file.Close(); err != nil {
-	// 	return nil, nil, err
-	// }
 
 	return file, func() { os.Remove(file.Name()) }, nil
 }
@@ -540,7 +559,7 @@ func constructMultipartForm(values map[string]io.Reader) (r *http.Request, err e
 	return req, err
 }
 
-// generates a 1_091_902 byte string
+// generates a 1_091_902 byte valid json string
 func generateBigJSON() string {
 	var sb strings.Builder
 

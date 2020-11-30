@@ -139,17 +139,6 @@ func parseApplicationJSON(reader io.Reader) (results map[string][]string, err er
 			msg := fmt.Sprintf("Request body contains badly-formed JSON")
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		// TODO: for struct types that don't match the json type, i.e. putting a string into an array
-		// case errors.As(decodeErr, &unmarshalTypeError):
-		// 	msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
-		// 	return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		// TODO: for checking struct required tags with "DisallowUnknownFields()"
-		// case strings.HasPrefix(err.Error(), "json: unknown field "):
-		// 	fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
-		// 	msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
-		// 	return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
 		case errors.Is(decodeErr, io.EOF):
 			msg := "Request body must not be empty"
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
