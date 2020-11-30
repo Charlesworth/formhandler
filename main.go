@@ -142,10 +142,11 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 			msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case strings.HasPrefix(err.Error(), "json: unknown field "):
-			fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
-			msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
-			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+		// TODO: for checking struct required tags with "DisallowUnknownFields()"
+		// case strings.HasPrefix(err.Error(), "json: unknown field "):
+		// 	fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
+		// 	msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
+		// 	return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
 		case errors.Is(err, io.EOF):
 			msg := "Request body must not be empty"
@@ -156,6 +157,7 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 			return nil, &malformedRequest{status: http.StatusRequestEntityTooLarge, msg: msg}
 
 		default:
+			// TODO: return a generic error
 			return nil, err
 		}
 	}
@@ -166,8 +168,70 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 		return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 	}
 
-	// TODO pass back the json
+	for key, interfaceValue := range jsonContent {
+		switch value := interfaceValue.(type) {
+		// string unmarshals JSON strings
+		case string:
+			// TODO: check the string for escape stuff
+			fmt.Println(key, value)
+
+		// []interface{} unmarshals JSON arrays
+		case []interface{}:
+
+			results := []string{}
+			// TODO: unpack the strings
+			for _, value := range value {
+				strValue, ok := value.(string)
+				if !ok {
+					// TODO: return error
+				}
+				// TODO: check the strings for escape stuff
+				results = append(results, strValue)
+			}
+			fmt.Println(key, results)
+
+		// reject everything else, we only accept string or []string
+		default:
+
+		}
+	}
+
+	// TODO: pass back the json
 	return nil, nil
+}
+
+func parseMapInterface(mapInterface map[string]interface{}) (results map[string][]string, err error) {
+
+	for key, interfaceValue := range mapInterface {
+		switch value := interfaceValue.(type) {
+		// string unmarshals JSON strings
+		case string:
+			// TODO: check the string for escape stuff
+			fmt.Println(key, value)
+			results[key] = []string{value}
+
+		// []interface{} unmarshals JSON arrays
+		case []interface{}:
+
+			arrResults := []string{}
+			// TODO: unpack the strings
+			for _, value := range value {
+				strValue, ok := value.(string)
+				if !ok {
+					// TODO: return error
+				}
+				// TODO: check the strings for escape stuff
+				arrResults = append(arrResults, strValue)
+			}
+			fmt.Println(key, results)
+			results[key] = arrResults
+
+		// reject everything else, we only accept string or []string
+		default:
+			return nil, errors.New("JSON ya canny do that m8")
+		}
+	}
+	return results, nil
 }
 
 func parseFormURLEncoded(r *http.Request) (results map[string][]string, err error) {
