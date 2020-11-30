@@ -181,11 +181,15 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 			assert.NoError(t, err, "Error constructing test request")
 
 			w := httptest.NewRecorder()
-			results, files, err := getFormContent(w, r)
+			results, files, err := GetFormContent(w, r)
 
 			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
-			assert.True(t, (err != nil) == tt.expectedError)
+			if tt.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.Nil(t, err)
+			}
 
 			assert.Empty(t, files, "unexpected file parsed from url encoded form")
 		})
@@ -283,7 +287,7 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 			assert.NoError(t, err, "Error constructing test request")
 
 			w := httptest.NewRecorder()
-			results, files, err := getFormContent(w, r)
+			results, files, err := GetFormContent(w, r)
 
 			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
@@ -417,7 +421,7 @@ func TestGetFormContent_Multipart(t *testing.T) {
 			assert.NoError(t, err)
 
 			w := httptest.NewRecorder()
-			results, files, err := getFormContent(w, r)
+			results, files, err := GetFormContent(w, r)
 
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
 
@@ -442,7 +446,7 @@ func TestInvalidContentType(t *testing.T) {
 	r.Header.Set("Content-Type", "application/fake-test-content-type")
 
 	w := httptest.NewRecorder()
-	results, files, err := getFormContent(w, r)
+	results, files, err := GetFormContent(w, r)
 
 	assert.Nil(t, results)
 	assert.Nil(t, files)
@@ -454,7 +458,7 @@ func TestMissingContentType(t *testing.T) {
 	assert.NoError(t, err)
 
 	w := httptest.NewRecorder()
-	results, files, err := getFormContent(w, r)
+	results, files, err := GetFormContent(w, r)
 
 	assert.Nil(t, results)
 	assert.Nil(t, files)

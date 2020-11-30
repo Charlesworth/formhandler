@@ -19,10 +19,6 @@ const (
 	megabyte = 1_048_576
 )
 
-func handleForm(w http.ResponseWriter, r *http.Request) {
-	getFormContent(w, r)
-}
-
 // isMultipartFormHeader returns if the content-type header is multipart/form-data.
 // because multipart/form-data has the field boundaries suffixed to the header,
 // we need to check that the prefix of the header is "multipart/form-data"
@@ -50,8 +46,7 @@ func (pe *ParseError) Error() string {
 	return pe.msg
 }
 
-func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
-	// TODO: pass back malformed request
+func GetFormContentWithConfig(formSize int64, formWithFilesSize int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
 	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
 
 		switch contentType := getContentType(r.Header); contentType {
@@ -79,34 +74,8 @@ func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWrite
 	}
 }
 
-// TODO: pass back malformed request
-func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
-
-	switch contentType := getContentType(r.Header); contentType {
-
-	case headerValApplicationJSON:
-		// limit the body size to 1MB as json encoded forms do not include files
-		r.Body = http.MaxBytesReader(w, r.Body, megabyte)
-		results, err = parseApplicationJSON(r.Body)
-
-	case headerValFormURLEncoded:
-		// limit the body size to 1MB as URL encoded forms do not include files
-		r.Body = http.MaxBytesReader(w, r.Body, megabyte)
-		results, err = parseFormURLEncoded(r)
-
-	case headerValFormMultipart:
-		// limit the body size to 10MB as multipart encoded forms can include files
-		r.Body = http.MaxBytesReader(w, r.Body, 10*megabyte)
-		results, files, err = parseFormMultipart(r)
-
-	case "":
-		err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header is required")}
-
-	default:
-		err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header %s is unsupported", contentType)}
-	}
-
-	return results, files, err
+func GetFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	return GetFormContentWithConfig(megabyte, megabyte*10)(w, r)
 }
 
 func parseApplicationJSON(reader io.Reader) (results map[string][]string, err *ParseError) {
