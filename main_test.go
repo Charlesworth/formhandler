@@ -21,6 +21,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 		testName               string
 		testRequestConstructor func() (req *http.Request, err error)
 		expectedValuesOutput   map[string][]string
+		expectedError          bool
 	}{
 		{
 			"1 valid string field",
@@ -28,6 +29,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				return constructJSONEncodedForm(`{"field1": "value1"}`)
 			},
 			map[string][]string{"field1": []string{"value1"}},
+			false,
 		},
 		{
 			"2 valid string fields",
@@ -38,6 +40,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				"field1": []string{"value1"},
 				"field2": []string{"value2"},
 			},
+			false,
 		},
 		{
 			"1 valid string array field",
@@ -45,6 +48,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				return constructJSONEncodedForm(`{"field1": ["value1"]}`)
 			},
 			map[string][]string{"field1": []string{"value1"}},
+			false,
 		},
 		{
 			"2 valid string array fields",
@@ -55,14 +59,120 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				"field1": []string{"value1"},
 				"field2": []string{"value2"},
 			},
+			false,
 		},
-		// {
-		// 	"empty string array field",
-		// 	func() (*http.Request, error) {
-		// 		return constructJSONEncodedForm(`{"field1": []}`)
-		// 	},
-		// 	map[string][]string{},
-		// },
+		{
+			"empty string array field",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": []}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"empty string field",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": ""}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"empty string array field with valid string",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": "value1", "field2": []}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"empty string field with valid string array",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": "", "field2": ["value2"]}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"empty object body",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"non json body",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`hello world`)
+			},
+			nil,
+			true,
+		},
+		{
+			"malformed json body",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": value1}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"empty body",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(``)
+			},
+			nil,
+			true,
+		},
+		{
+			"bigger than 1 MB body",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(generateBigJSON())
+			},
+			nil,
+			true,
+		},
+		{
+			"multiple JSON objects",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"1":"1"}{"2":"2"}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"invalid number",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": 1.2}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"invalid null",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": null}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"invalid array contents",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": [1, 1.345, null]}`)
+			},
+			nil,
+			true,
+		},
+		{
+			"invalid child object",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": {"hello": "hi"}}`)
+			},
+			nil,
+			true,
+		},
 	}
 
 	for _, tt := range formContentTests {
@@ -76,6 +186,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 
 			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
+			assert.True(t, (err != nil) == tt.expectedError)
 
 			assert.Empty(t, files, "unexpected file parsed from url encoded form")
 		})
@@ -427,4 +538,18 @@ func constructMultipartForm(values map[string]io.Reader) (r *http.Request, err e
 	// set the content type, this will contain the boundary
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	return req, err
+}
+
+// generates a 1_091_902 byte string
+func generateBigJSON() string {
+	var sb strings.Builder
+
+	sb.WriteString(`{`)
+	for i := 0; i < (megabyte / 8 / 2); i++ {
+		sb.WriteString(fmt.Sprintf(`"%v": "%v",`, i, i))
+	}
+	sb.WriteString(`"a": "a"}`)
+
+	bigJSON := sb.String()
+	return bigJSON
 }

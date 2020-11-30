@@ -96,7 +96,7 @@ func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string]
 	case headerValApplicationJSON:
 		// limit the body size to 1MB as json encoded forms do not include files
 		r.Body = http.MaxBytesReader(w, r.Body, megabyte)
-		results, err = parseApplicationJSON(r)
+		results, err = parseApplicationJSON(r.Body)
 
 	case headerValFormURLEncoded:
 		// limit the body size to 1MB as URL encoded forms do not include files
@@ -122,13 +122,13 @@ func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string]
 }
 
 // TODO: use malformed error here
-func parseApplicationJSON(r *http.Request) (results map[string][]string, err error) {
-	dec := json.NewDecoder(r.Body)
+func parseApplicationJSON(reader io.Reader) (results map[string][]string, err error) {
+	dec := json.NewDecoder(reader)
 	jsonContent := map[string]interface{}{}
 	decodeErr := dec.Decode(&jsonContent)
 	if decodeErr != nil {
 		var syntaxError *json.SyntaxError
-		var unmarshalTypeError *json.UnmarshalTypeError
+		// var unmarshalTypeError *json.UnmarshalTypeError
 
 		switch {
 		case errors.As(decodeErr, &syntaxError):
@@ -139,9 +139,10 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err err
 			msg := fmt.Sprintf("Request body contains badly-formed JSON")
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case errors.As(decodeErr, &unmarshalTypeError):
-			msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
-			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+		// TODO: for struct types that don't match the json type, i.e. putting a string into an array
+		// case errors.As(decodeErr, &unmarshalTypeError):
+		// 	msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
+		// 	return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
 		// TODO: for checking struct required tags with "DisallowUnknownFields()"
 		// case strings.HasPrefix(err.Error(), "json: unknown field "):
@@ -174,12 +175,18 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err err
 
 func parseMapInterface(mapInterface map[string]interface{}) (results map[string][]string, err error) {
 	results = make(map[string][]string)
+	if len(mapInterface) == 0 {
+		return nil, errors.New(`JSON object contains no fields`)
+	}
 
 	for key, interfaceValue := range mapInterface {
 		switch value := interfaceValue.(type) {
 		// string unmarshals JSON strings
 		case string:
 			// TODO: check the string for escape stuff
+			if value == "" {
+				return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", cannot use an empty string`, key)
+			}
 			results[key] = []string{value}
 
 		// []interface{} unmarshals JSON arrays
