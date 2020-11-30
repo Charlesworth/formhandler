@@ -39,20 +39,20 @@ func getContentType(header http.Header) string {
 	return contentType
 }
 
-// MalformedRequest is the error returned from parsing the request that can be used
-// to produce a http error response
-type MalformedRequest struct {
+// ParseError is the error returned from parsing the request that can be used
+// to produce a http error response with it's status and message
+type ParseError struct {
 	status int
 	msg    string
 }
 
-func (mr *MalformedRequest) Error() string {
-	return mr.msg
+func (pe *ParseError) Error() string {
+	return pe.msg
 }
 
-func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
 	// TODO: pass back malformed request
-	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
 
 		switch contentType := getContentType(r.Header); contentType {
 
@@ -69,12 +69,10 @@ func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWrite
 			results, files, err = parseFormMultipart(r)
 
 		case "":
-			err = fmt.Errorf("Content-Type header is required")
-			// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
+			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header is required")}
 
 		default:
-			err = fmt.Errorf("Content-Type header %s is unsupported", contentType)
-			// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
+			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header %s is unsupported", contentType)}
 		}
 
 		return results, files, err
@@ -82,7 +80,7 @@ func generate(formSize int64, formWithFilesSize int64) func(w http.ResponseWrite
 }
 
 // TODO: pass back malformed request
-func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
 
 	switch contentType := getContentType(r.Header); contentType {
 
@@ -102,20 +100,16 @@ func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string]
 		results, files, err = parseFormMultipart(r)
 
 	case "":
-		err = fmt.Errorf("Content-Type header is required")
-		// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
-		// return nil, nil, errors.New(errMsg)
+		err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header is required")}
 
 	default:
-		err = fmt.Errorf("Content-Type header %s is unsupported", contentType)
-		// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
+		err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header %s is unsupported", contentType)}
 	}
 
 	return results, files, err
 }
 
-// TODO: use malformed error here
-func parseApplicationJSON(reader io.Reader) (results map[string][]string, err error) {
+func parseApplicationJSON(reader io.Reader) (results map[string][]string, err *ParseError) {
 	dec := json.NewDecoder(reader)
 	jsonContent := map[string]interface{}{}
 	decodeErr := dec.Decode(&jsonContent)
@@ -124,87 +118,76 @@ func parseApplicationJSON(reader io.Reader) (results map[string][]string, err er
 
 		switch {
 		case errors.As(decodeErr, &syntaxError):
-			msg := fmt.Sprintf("Request body contains badly-formed JSON (at position %d)", syntaxError.Offset)
-			return nil, &MalformedRequest{status: http.StatusBadRequest, msg: msg}
+			return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf("Request body contains badly-formed JSON (at position %d)", syntaxError.Offset)}
 
 		case errors.Is(decodeErr, io.ErrUnexpectedEOF):
-			msg := fmt.Sprintf("Request body contains badly-formed JSON")
-			return nil, &MalformedRequest{status: http.StatusBadRequest, msg: msg}
+			return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf("Request body contains badly-formed JSON")}
 
 		case errors.Is(decodeErr, io.EOF):
-			msg := "Request body must not be empty"
-			return nil, &MalformedRequest{status: http.StatusBadRequest, msg: msg}
+			return nil, &ParseError{status: http.StatusBadRequest, msg: "Request body must not be empty"}
 
 		case decodeErr.Error() == "http: request body too large":
-			msg := "Request body must not be larger than 1MB"
-			return nil, &MalformedRequest{status: http.StatusRequestEntityTooLarge, msg: msg}
+			return nil, &ParseError{status: http.StatusRequestEntityTooLarge, msg: "Request body too large"}
 
 		default:
-			// TODO: return a generic error
-			return nil, decodeErr
+			// TODO: This is an unkown error here, putting as a server error for now
+			return nil, &ParseError{status: http.StatusInternalServerError, msg: "Internal Server Error"}
 		}
 	}
 
 	secondDecodeErr := dec.Decode(&struct{}{})
 	if secondDecodeErr != io.EOF {
-		msg := "Request body must only contain a single JSON object"
-		return nil, &MalformedRequest{status: http.StatusBadRequest, msg: msg}
+		return nil, &ParseError{status: http.StatusBadRequest, msg: "Request body must only contain a single JSON object"}
 	}
 
 	return parseMapInterface(jsonContent)
 }
 
-func parseMapInterface(mapInterface map[string]interface{}) (results map[string][]string, err error) {
+func parseMapInterface(mapInterface map[string]interface{}) (results map[string][]string, err *ParseError) {
 	results = make(map[string][]string)
 	if len(mapInterface) == 0 {
-		return nil, errors.New(`JSON object contains no fields`)
+		return nil, &ParseError{status: http.StatusBadRequest, msg: `JSON object contains no fields`}
 	}
 
 	for key, interfaceValue := range mapInterface {
 		switch value := interfaceValue.(type) {
 		// string unmarshals JSON strings
 		case string:
-			// TODO: check the string for escape stuff
 			if value == "" {
-				return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", cannot use an empty string`, key)
+				return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf(`JSON object contains invalid value for field "%s", cannot use an empty string`, key)}
 			}
 			results[key] = []string{value}
 
 		// []interface{} unmarshals JSON arrays
 		case []interface{}:
 			if len(value) == 0 {
-				return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", cannot use an empty array`, key)
+				return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf(`JSON object contains invalid value for field "%s", cannot use an empty array`, key)}
 			}
 
 			arrResults := []string{}
-			// TODO: unpack the strings
 			for _, value := range value {
 				strValue, ok := value.(string)
 				if !ok {
-					// TODO: send back error in malformed format
-					return nil, fmt.Errorf(`JSON object contains invalid array for field "%s", array values must be exclusively strings`, key)
+					return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf(`JSON object contains invalid array for field "%s", array values must be exclusively strings`, key)}
 				}
-				// TODO: check the strings for escape stuff
 				arrResults = append(arrResults, strValue)
 			}
 			results[key] = arrResults
 
-		// reject everything else, we only accept string or []string
+		// reject all other JSON types
 		default:
-			// TODO: send back error in malformed format
-			return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", values must be string or []string types`, key)
+			return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf(`JSON object contains invalid value for field "%s", values must be string or []string types`, key)}
 		}
 	}
 
 	return results, nil
 }
 
-func parseFormURLEncoded(r *http.Request) (results map[string][]string, err error) {
+func parseFormURLEncoded(r *http.Request) (results map[string][]string, err *ParseError) {
 	// Body reader size is capped at 10MB when using ParseForm()
-	err = r.ParseForm()
-	if err != nil {
-		// TODO: server or user error?
-		return nil, err
+	parseFormErr := r.ParseForm()
+	if parseFormErr != nil {
+		return nil, &ParseError{status: http.StatusBadRequest, msg: `Invalid URL encoded form`}
 	}
 
 	results = r.Form
@@ -213,11 +196,11 @@ func parseFormURLEncoded(r *http.Request) (results map[string][]string, err erro
 	return results, nil
 }
 
-func parseFormMultipart(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
-	err = r.ParseMultipartForm(32 << 20) // maxMemory 32MB
-	if err != nil {
-		// TODO: server or user error?
-		return nil, nil, err
+func parseFormMultipart(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
+	// TODO: use the same as the max bytes reader here
+	parseFormErr := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
+	if parseFormErr != nil {
+		return nil, nil, &ParseError{status: http.StatusBadRequest, msg: `Invalid URL encoded form`}
 	}
 
 	results = r.PostForm
