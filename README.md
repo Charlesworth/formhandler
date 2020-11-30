@@ -1,18 +1,11 @@
-# go forms example: code and notes on handling HTML forms in Go
+# formhandler
 
-Notes and code play around for accepting forms via a Go web server. Covers:
+## TODO
 
-- all valid form input types
-- `application/x-www-form-urlencoded` and `multipart/form-data` form enctypes
-- exclusively non-`GET` forms
-- forms uploading a single file
-- forms uploading multiple files via a single input using the `multiple` attribute
-- forms uploading multiple files via multiple inputs
-- form submission responses (i.e. a "thank you" page)
-- form submission redirects (i.e. to another site)
-- simple server side form validation
-- dynamic server side form validation
-- restricting submissions to a given request domain
+- make a default handler
+- make a handler generator with optional config
+- use x/errors
+- test url encoded and multipart with no body
 
 ## Form requests
 
