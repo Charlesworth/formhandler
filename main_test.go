@@ -1,4 +1,4 @@
-package main
+package forms
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 			func() (*http.Request, error) {
 				return constructJSONEncodedForm(`{"field1": "value1"}`)
 			},
-			map[string][]string{"field1": []string{"value1"}},
+			map[string][]string{"field1": {"value1"}},
 			false,
 		},
 		{
@@ -37,8 +37,8 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				return constructJSONEncodedForm(`{"field1": "value1", "field2": "value2"}`)
 			},
 			map[string][]string{
-				"field1": []string{"value1"},
-				"field2": []string{"value2"},
+				"field1": {"value1"},
+				"field2": {"value2"},
 			},
 			false,
 		},
@@ -47,7 +47,7 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 			func() (*http.Request, error) {
 				return constructJSONEncodedForm(`{"field1": ["value1"]}`)
 			},
-			map[string][]string{"field1": []string{"value1"}},
+			map[string][]string{"field1": {"value1"}},
 			false,
 		},
 		{
@@ -56,8 +56,8 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 				return constructJSONEncodedForm(`{"field1": ["value1"], "field2": ["value2"]}`)
 			},
 			map[string][]string{
-				"field1": []string{"value1"},
-				"field2": []string{"value2"},
+				"field1": {"value1"},
+				"field2": {"value2"},
 			},
 			false,
 		},
