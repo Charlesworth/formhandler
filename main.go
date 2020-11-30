@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -12,9 +15,11 @@ import (
 )
 
 const (
-	headerKeyContentType    = "Content-Type"
-	headerValFormURLEncoded = "application/x-www-form-urlencoded"
-	headerValFormMultipart  = "multipart/form-data"
+	headerKeyContentType     = "Content-Type"
+	headerValFormURLEncoded  = "application/x-www-form-urlencoded"
+	headerValApplicationJSON = "application/json"
+	headerValFormMultipart   = "multipart/form-data"
+	megabyte                 = 1_048_576
 )
 
 func main() {
@@ -44,7 +49,7 @@ func handleTemplate(tmplFile string, formEnpoint string) func(w http.ResponseWri
 }
 
 func handleForm(w http.ResponseWriter, r *http.Request) {
-	results, files, err := getFormContent(r)
+	results, files, err := getFormContent(w, r)
 
 	if err != nil {
 		log.Println("Error: ", err.Error())
@@ -58,16 +63,111 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-func getFormContent(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
-	contentType := r.Header.Get(headerKeyContentType)
-	if contentType == headerValFormURLEncoded {
-		results, err := parseFormURLEncoded(r)
-		return results, nil, err
+// isMultipartFormHeader returns if the content-type header is multipart/form-data.
+// because multipart/form-data has the field boundaries suffixed to the header,
+// we need to check that the prefix of the header is "multipart/form-data"
+// and not match on string equality like the other content type header checks.
+func isMultipartFormHeader(contentType string) bool {
+	return strings.HasPrefix(contentType, headerValFormMultipart)
+}
+
+func getContentType(header http.Header) string {
+	contentType := header.Get(headerKeyContentType)
+	if isMultipartFormHeader(contentType) {
+		return headerValFormMultipart
 	}
-	if strings.HasPrefix(contentType, headerValFormMultipart) {
-		return parseFormMultipart(r)
+	return contentType
+}
+
+type malformedRequest struct {
+	status int
+	msg    string
+}
+
+func (mr *malformedRequest) Error() string {
+	return mr.msg
+}
+
+// TODO: pass back malformed request
+func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+
+	switch contentType := getContentType(r.Header); contentType {
+
+	case headerValApplicationJSON:
+		// limit the body size to 1MB as json encoded forms do not include files
+		r.Body = http.MaxBytesReader(w, r.Body, megabyte)
+		results, err = parseApplicationJSON(r)
+
+	case headerValFormURLEncoded:
+		// limit the body size to 1MB as URL encoded forms do not include files
+		r.Body = http.MaxBytesReader(w, r.Body, megabyte)
+		results, err = parseFormURLEncoded(r)
+
+	case headerValFormMultipart:
+		// limit the body size to 10MB as multipart encoded forms can include files
+		r.Body = http.MaxBytesReader(w, r.Body, 10*megabyte)
+		results, files, err = parseFormMultipart(r)
+
+	case "":
+		err = fmt.Errorf("Content-Type header is required")
+		// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
+		// return nil, nil, errors.New(errMsg)
+
+	default:
+		err = fmt.Errorf("Content-Type header %s is unsupported", contentType)
+		// http.Error(resp, errMsg, http.StatusUnsupportedMediaType)
 	}
-	return nil, nil, fmt.Errorf(`Unsupported content type "%v", please use "%v" or "%v"`, contentType, headerValFormMultipart, headerValFormURLEncoded)
+
+	return results, files, err
+}
+
+func parseApplicationJSON(r *http.Request) (results map[string][]string, err *malformedRequest) {
+	dec := json.NewDecoder(r.Body)
+	jsonContent := map[string]interface{}{}
+	decodeErr := dec.Decode(&jsonContent)
+	if decodeErr != nil {
+		var syntaxError *json.SyntaxError
+		var unmarshalTypeError *json.UnmarshalTypeError
+
+		switch {
+		case errors.As(err, &syntaxError):
+			msg := fmt.Sprintf("Request body contains badly-formed JSON (at position %d)", syntaxError.Offset)
+			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+
+		case errors.Is(err, io.ErrUnexpectedEOF):
+			msg := fmt.Sprintf("Request body contains badly-formed JSON")
+			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+
+		case errors.As(err, &unmarshalTypeError):
+			msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
+			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+
+		case strings.HasPrefix(err.Error(), "json: unknown field "):
+			fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
+			msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
+			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+
+		case errors.Is(err, io.EOF):
+			msg := "Request body must not be empty"
+			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+
+		case err.Error() == "http: request body too large":
+			msg := "Request body must not be larger than 1MB"
+			return nil, &malformedRequest{status: http.StatusRequestEntityTooLarge, msg: msg}
+
+		default:
+			return nil, err
+		}
+	}
+
+	secondDecodeErr := dec.Decode(&struct{}{})
+	if secondDecodeErr != io.EOF {
+		msg := "Request body must only contain a single JSON object"
+		return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
+	}
+
+	// TODO pass back the json
+	return nil, nil
 }
 
 func parseFormURLEncoded(r *http.Request) (results map[string][]string, err error) {

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -105,7 +106,9 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 			r, err := tt.testRequestConstructor()
 			assert.NoError(t, err, "Error constructing test request")
 
-			results, files, err := getFormContent(r)
+			// TODO: check the w
+			w := httptest.NewRecorder()
+			results, files, err := getFormContent(w, r)
 
 			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
@@ -238,7 +241,9 @@ func TestGetFormContent_Multipart(t *testing.T) {
 			r, cleanup, err := tt.testRequestConstructor()
 			assert.NoError(t, err)
 
-			results, files, err := getFormContent(r)
+			// TODO: check the w
+			w := httptest.NewRecorder()
+			results, files, err := getFormContent(w, r)
 
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
 
