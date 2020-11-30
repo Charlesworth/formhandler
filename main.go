@@ -121,7 +121,8 @@ func getFormContent(w http.ResponseWriter, r *http.Request) (results map[string]
 	return results, files, err
 }
 
-func parseApplicationJSON(r *http.Request) (results map[string][]string, err *malformedRequest) {
+// TODO: use malformed error here
+func parseApplicationJSON(r *http.Request) (results map[string][]string, err error) {
 	dec := json.NewDecoder(r.Body)
 	jsonContent := map[string]interface{}{}
 	decodeErr := dec.Decode(&jsonContent)
@@ -130,15 +131,15 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 		var unmarshalTypeError *json.UnmarshalTypeError
 
 		switch {
-		case errors.As(err, &syntaxError):
+		case errors.As(decodeErr, &syntaxError):
 			msg := fmt.Sprintf("Request body contains badly-formed JSON (at position %d)", syntaxError.Offset)
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case errors.Is(err, io.ErrUnexpectedEOF):
+		case errors.Is(decodeErr, io.ErrUnexpectedEOF):
 			msg := fmt.Sprintf("Request body contains badly-formed JSON")
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case errors.As(err, &unmarshalTypeError):
+		case errors.As(decodeErr, &unmarshalTypeError):
 			msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
@@ -148,17 +149,17 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 		// 	msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
 		// 	return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case errors.Is(err, io.EOF):
+		case errors.Is(decodeErr, io.EOF):
 			msg := "Request body must not be empty"
 			return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 
-		case err.Error() == "http: request body too large":
+		case decodeErr.Error() == "http: request body too large":
 			msg := "Request body must not be larger than 1MB"
 			return nil, &malformedRequest{status: http.StatusRequestEntityTooLarge, msg: msg}
 
 		default:
 			// TODO: return a generic error
-			return nil, err
+			return nil, decodeErr
 		}
 	}
 
@@ -168,69 +169,45 @@ func parseApplicationJSON(r *http.Request) (results map[string][]string, err *ma
 		return nil, &malformedRequest{status: http.StatusBadRequest, msg: msg}
 	}
 
-	for key, interfaceValue := range jsonContent {
-		switch value := interfaceValue.(type) {
-		// string unmarshals JSON strings
-		case string:
-			// TODO: check the string for escape stuff
-			fmt.Println(key, value)
-
-		// []interface{} unmarshals JSON arrays
-		case []interface{}:
-
-			results := []string{}
-			// TODO: unpack the strings
-			for _, value := range value {
-				strValue, ok := value.(string)
-				if !ok {
-					// TODO: return error
-				}
-				// TODO: check the strings for escape stuff
-				results = append(results, strValue)
-			}
-			fmt.Println(key, results)
-
-		// reject everything else, we only accept string or []string
-		default:
-
-		}
-	}
-
-	// TODO: pass back the json
-	return nil, nil
+	return parseMapInterface(jsonContent)
 }
 
 func parseMapInterface(mapInterface map[string]interface{}) (results map[string][]string, err error) {
+	results = make(map[string][]string)
 
 	for key, interfaceValue := range mapInterface {
 		switch value := interfaceValue.(type) {
 		// string unmarshals JSON strings
 		case string:
 			// TODO: check the string for escape stuff
-			fmt.Println(key, value)
 			results[key] = []string{value}
 
 		// []interface{} unmarshals JSON arrays
 		case []interface{}:
+			if len(value) == 0 {
+				return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", cannot use an empty array`, key)
+			}
 
 			arrResults := []string{}
 			// TODO: unpack the strings
 			for _, value := range value {
 				strValue, ok := value.(string)
 				if !ok {
-					// TODO: return error
+					// TODO: send back error in malformed format
+					return nil, fmt.Errorf(`JSON object contains invalid array for field "%s", array values must be exclusively strings`, key)
 				}
 				// TODO: check the strings for escape stuff
 				arrResults = append(arrResults, strValue)
 			}
-			fmt.Println(key, results)
 			results[key] = arrResults
 
 		// reject everything else, we only accept string or []string
 		default:
-			return nil, errors.New("JSON ya canny do that m8")
+			// TODO: send back error in malformed format
+			return nil, fmt.Errorf(`JSON object contains invalid value for field "%s", values must be string or []string types`, key)
 		}
 	}
+
 	return results, nil
 }
 

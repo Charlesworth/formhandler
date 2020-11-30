@@ -16,6 +16,72 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestGetFormContent_JSONEncoded(t *testing.T) {
+	var formContentTests = []struct {
+		testName               string
+		testRequestConstructor func() (req *http.Request, err error)
+		expectedValuesOutput   map[string][]string
+	}{
+		{
+			"1 valid string field",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": "value1"}`)
+			},
+			map[string][]string{"field1": []string{"value1"}},
+		},
+		{
+			"2 valid string fields",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": "value1", "field2": "value2"}`)
+			},
+			map[string][]string{
+				"field1": []string{"value1"},
+				"field2": []string{"value2"},
+			},
+		},
+		{
+			"1 valid string array field",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": ["value1"]}`)
+			},
+			map[string][]string{"field1": []string{"value1"}},
+		},
+		{
+			"2 valid string array fields",
+			func() (*http.Request, error) {
+				return constructJSONEncodedForm(`{"field1": ["value1"], "field2": ["value2"]}`)
+			},
+			map[string][]string{
+				"field1": []string{"value1"},
+				"field2": []string{"value2"},
+			},
+		},
+		// {
+		// 	"empty string array field",
+		// 	func() (*http.Request, error) {
+		// 		return constructJSONEncodedForm(`{"field1": []}`)
+		// 	},
+		// 	map[string][]string{},
+		// },
+	}
+
+	for _, tt := range formContentTests {
+		t.Run(tt.testName, func(t *testing.T) {
+			r, err := tt.testRequestConstructor()
+			assert.NoError(t, err, "Error constructing test request")
+
+			// TODO: check the w
+			w := httptest.NewRecorder()
+			results, files, err := getFormContent(w, r)
+
+			assert.Equal(t, len(tt.expectedValuesOutput), len(results), "unexpected parsed form results")
+			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
+
+			assert.Empty(t, files, "unexpected file parsed from url encoded form")
+		})
+	}
+}
+
 func TestGetFormContent_URLEncoded(t *testing.T) {
 	var formContentTests = []struct {
 		testName               string
@@ -294,6 +360,11 @@ To test the all combinations multipart form, all of these cases need to be cover
 - every combination of file and value fields
 
 */
+func constructJSONEncodedForm(jsonStr string) (*http.Request, error) {
+	r, err := http.NewRequest(http.MethodPost, "/", strings.NewReader(jsonStr))
+	r.Header.Set("Content-Type", "application/json")
+	return r, err
+}
 
 func constructURLEncodedForm(values url.Values) (*http.Request, error) {
 	r, err := http.NewRequest(http.MethodPost, "/", strings.NewReader(values.Encode()))
