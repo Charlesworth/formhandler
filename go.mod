@@ -1,4 +1,4 @@
-module formhandler
+module github.com/charlesworth/formhandler
 
 go 1.15
 
