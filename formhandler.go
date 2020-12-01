@@ -23,15 +23,26 @@ const (
 // GetFormContent accepts a request of content type "application/x-www-form-urlencoded",
 // "application/json" or "multipart/form-data", parses the body and returns the form data
 // and files contained in the request
-func GetFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+func GetFormContent(
+	w http.ResponseWriter,
+	r *http.Request,
+) (
+	results map[string][]string,
+	files map[string][]*multipart.FileHeader,
+	err error,
+) {
 	return GetFormContentWithConfig(megabyte, megabyte*10, megabyte*10)(w, r)
 }
 
 // GetFormContentWithConfig operates the same as GetFormContent but with added config options:
 // - maxFormSize: The maximum size in bytes a form request can be (applies to JSON and URL encoded forms, which cannot have files attached)
 // - maxFormWithFilesSize: The maximum size in bytes a form request with attached files can be (applies to multipart/form-data encoded forms, which can have files attached)
-// - maxMemory: Given a form request body is parsed, maxMemory bytes of its file parts are stored in memory, with the remainder stored on disk in temporary files (applies to multipart/form-data encoded forms, which can have files attached).
-func GetFormContentWithConfig(maxFormSize int64, maxFormWithFilesSize int64, maxMemory int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+// - maxMemory: Given a form request body is parsed, maxMemory bytes of its file parts are stored in memory, with the remainder stored on disk in temporary files (applies to multipart/form-data encoded forms, which can have files attached)
+func GetFormContentWithConfig(
+	maxFormSize int64,
+	maxFormWithFilesSize int64,
+	maxMemory int64,
+) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
 	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
 
 		switch contentType := getContentType(r.Header); contentType {

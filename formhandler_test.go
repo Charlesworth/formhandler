@@ -17,6 +17,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+/*
+TODO: these tests are not exhaustive, would be nice to:
+- generate random form entries using fuzzing
+- check the returned errors are the expected type for a given error condition (this would require sentinel error types with optional wrapping with additional error information)
+- run benchmarks, in particular the reduceUnansweredFields calls in combination with ParseForm is low hanging code to optimise, as we iterate through all fields twice
+*/
+
 func TestGetFormContent_JSONEncoded(t *testing.T) {
 	var formContentTests = []struct {
 		testName               string
@@ -300,6 +307,38 @@ func TestGetFormContent_URLEncoded(t *testing.T) {
 	}
 }
 
+/*
+To test the all combinations multipart form, all of these cases need to be covered:
+
+- no fields
+  - no fields
+
+- file fields
+  - single file field with [none] files
+  - single file field with [one] files
+  - single file field with [multiple] files
+  - multiple file fields with [none] files
+  - multiple file fields with [one] files
+  - multiple file fields with [one, none] files
+  - multiple file fields with [multiple] files
+  - multiple file fields with [multiple, none] files
+  - multiple file fields with [multiple, one] files
+  - multiple file fields with [multiple, none, one] files
+
+- value fields
+  - single value field with [none] value
+  - single value field with [one] value
+  - single value field with [multiple] value
+  - multiple value fields with [none] value
+  - multiple value fields with [one] value
+  - multiple value fields with [one, none] value
+  - multiple value fields with [multiple] value
+  - multiple value fields with [multiple, none] value
+  - multiple value fields with [multiple, one] value
+  - multiple value fields with [multiple, none, one] value
+
+- every combination of the above file and value fields
+*/
 func TestGetFormContent_Multipart(t *testing.T) {
 	var formContentTests = []struct {
 		testName               string
@@ -467,40 +506,6 @@ func TestMissingContentType(t *testing.T) {
 	assert.Nil(t, files)
 	assert.NotNil(t, err)
 }
-
-/*
-To test the all combinations multipart form, all of these cases need to be covered:
-
-- no fields
-  - no fields
-
-- file fields
-  - single file field with [none] files
-  - single file field with [one] files
-  - single file field with [multiple] files
-  - multiple file fields with [none] files
-  - multiple file fields with [one] files
-  - multiple file fields with [one, none] files
-  - multiple file fields with [multiple] files
-  - multiple file fields with [multiple, none] files
-  - multiple file fields with [multiple, one] files
-  - multiple file fields with [multiple, none, one] files
-
-- value fields
-  - single value field with [none] value
-  - single value field with [one] value
-  - single value field with [multiple] value
-  - multiple value fields with [none] value
-  - multiple value fields with [one] value
-  - multiple value fields with [one, none] value
-  - multiple value fields with [multiple] value
-  - multiple value fields with [multiple, none] value
-  - multiple value fields with [multiple, one] value
-  - multiple value fields with [multiple, none, one] value
-
-- every combination of file and value fields
-
-*/
 
 func constructJSONEncodedForm(jsonStr string) (*http.Request, error) {
 	r, err := http.NewRequest(http.MethodPost, "/", strings.NewReader(jsonStr))
