@@ -1,36 +1,54 @@
-# go forms example: code and notes on handling HTML forms in Go
+# formhandler
 
-Notes and code play around for accepting forms via a Go web server. Covers:
+A http handler that given a form request, parses and outputs the form content and files.
 
-- all valid form input types
-- `application/x-www-form-urlencoded` and `multipart/form-data` form enctypes
-- exclusively non-`GET` forms
-- forms uploading a single file
-- forms uploading multiple files via a single input using the `multiple` attribute
-- forms uploading multiple files via multiple inputs
-- form submission responses (i.e. a "thank you" page)
-- form submission redirects (i.e. to another site)
-- simple server side form validation
-- dynamic server side form validation
-- restricting submissions to a given request domain
+```language: go
+// GetFormContent accepts a request of content type "application/x-www-form-urlencoded",
+// "application/json" or "multipart/form-data", parses the body and returns the form data
+// and files contained in the request
+func GetFormContent(
+ w http.ResponseWriter,
+ r *http.Request,
+) (
+ results map[string][]string,
+ files map[string][]*multipart.FileHeader,
+ err error,
+)
+
+// GetFormContentWithConfig operates the same as GetFormContent but with added config options:
+// - maxFormSize: The maximum size in bytes a form request can be (applies to JSON and URL encoded forms, which cannot have files attached)
+// - maxFormWithFilesSize: The maximum size in bytes a form request with attached files can be (applies to multipart/form-data encoded forms, which can have files attached)
+// - maxMemory: Given a form request body is parsed, maxMemory bytes of its file parts are stored in memory, with the remainder stored on disk in temporary files (applies to multipart/form-data encoded forms, which can have files attached)
+func GetFormContentWithConfig(
+ maxFormSize int64,
+ maxFormWithFilesSize int64,
+ maxMemory int64,
+) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error)
+```
 
 ## Form requests
 
-### Content-Type
+### Accepted HTTP Content-Type
 
-Form post requests will either contain Content-Type `application/x-www-form-urlencoded` or `multipart/form-data`, both should be supported when working with forms.
+Requests must have a `Content-Type` of:
+
+- `multipart/form-data`
+- `application/json`
+- `application/x-www-form-urlencoded`
+
+Only `multipart/form-data` supports file uploads:
 
 > if you have binary (non-alphanumeric) data (or a significantly sized payload) to transmit, use multipart/form-data. Otherwise, use application/x-www-form-urlencoded ([source](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type))
 
-It is possile to send files via `application/x-www-form-urlencoded` but it is highly inefficient, resulting in request sizes at least 3x bigger for each non-alphanumeric byte ([source](https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data)).
-For this reason it is useful to refuse requests with files that use `application/x-www-form-urlencoded`.
+It is possible to send files via `application/x-www-form-urlencoded` and `application/json` but it is highly inefficient, resulting in request sizes at least 3x bigger for each non-alphanumeric byte ([source](https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data)). formhandler doesn't support this.
 
-You could also use JS to encode your forms into whatever you wanted, i.e. encode to JSON or XML and send that.
-This repo is not covering that case.
+### Accepted HTTP Methods
 
-### Form inputs
+formhandler does not check the request type, only the `Content-Type`, checking methods is left up to the user.
 
-All of these HTML input types should be supported, including the cases with support the `multiple` HTML attribute ([source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)).
+### Form input
+
+All HTML input types are supported, including the cases with support the `multiple` HTML attribute ([source](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)).
 
 Input types:
 
@@ -59,70 +77,37 @@ Non inputs types:
 - Multi-line text fields with `textarea`
 - Drop-down select with `select`
 
-To simplify what can be stored on the server, non-empty inputs consist of 4 different types:
+The handler removes fields with no values set when parsing the form request.
 
-- a file: where the file input is used without the `multiple` attribute
-- multiple files: where the file input is used with the `multiple` attribute
-- a string: any non-file input not using the `multiple` attribute
-- an array of strings: any non-file input that supports and uses the `multiple` attribute
+### JSON input
 
-For this usecase we can ignore empty fields, they will not be stored and should be removed when parsing the form request.
+formhandler also accepts JSON input via the `application/json` content type. It is very strict with the JSON it accepts, to try and conform the JSON structure to match what a traditional `multipart/form-data` or `application/x-www-form-urlencoded` uploads.
 
-### HTTP Method
+The JSON object can only have value types of `string` and `array<string>`. Any JSON values with `number`, `null`, `object` or `arrays<number | null | object>` types will be rejected.
 
-While `GET` and `POST` can be used, I will only accept `method="POST"`, this is easy to handle by limiting the handler to only accept `POST` requests. Delivering form data in the URL could be insecure in some situations so best for my case to avoid entirely.
+Valid JSON:
 
-### Submission responses
+```language: json
+{"name": "charlie", "number_choices": ["1", "4"]}
+```
 
-For "thank you" pages, just respond with the content in the `POST` response, simple!Redirects are valid too, for when you want to link to another domain:
+Invalid JSON:
 
-    w.Header().Set("Location", "https://example.com/")
-    w.WriteHeader(302)
+```language: json
+{"name": 123, "number_choices": [1, 1.2, null], "empty": null}
+```
 
-## Links
+## HTTP Security
 
-### Useful Go libraries
+The handler protects against users posting massive request bodies by default and also with configurable request body size and usable memory limits.
+Precautions should be taken by the user:
 
-Value sanitizer:
+- With server HTTP timeouts being set on the server ([useful source](https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/))
+- Form content is not sanitized at all, if storing or serving form content make sure to use SQL, HTML or any other applicable sanitization technique
+- CSRF where the form backend on a separate domain from the web backend
 
-- <https://github.com/leebenson/conform> Good if you need to sanitise the form data.
+## Stuff that could be added
 
-Request to struct:
-
-- <https://github.com/gorilla/schema> No file support and requires struct tags.
-- <https://github.com/go-playground/form> No file support and requires struct tags.
-- <https://github.com/mholt/binding> No struct tags required and supports files via multipart.
-
-Validation:
-
-- <https://github.com/go-playground/validator> Requires struct tags.
-- <https://github.com/asaskevich/govalidator> Loads of useful validation functions.
-- <https://github.com/go-ozzo/ozzo-validation> Validator can be constructed dynamically, provides nice error messages and uses govalidator under the covers for masses for validation functions.
-- <https://github.com/astaxie/beego/tree/develop/validation> Very basic and specific to Beego framework.
-
-CSRF protection middleware
-
-- <https://github.com/gorilla/csrf>
-- <https://github.com/justinas/nosurf>
-
-### Go form handling code specifics
-
-- <https://medium.com/@owlwalks/dont-parse-everything-from-client-multipart-post-golang-9280d23cd4ad>
-- <https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/04.5.html>
-- <https://ayada.dev/posts/multipart-requests-in-go/>
-- <https://www.reddit.com/r/golang/comments/apf6l5/multiple_files_upload_using_gos_standard_library/>
-
-## Vulnerabilities
-
-A couple of vulrabilities to be aware of, the code doesn't contain fixes but I've suggested some.
-
-- posting massive form body
-  - limit request size via the http server client
-- large amounts of tiny files via `multiple` attribute file inputs
-  - No great answer here, setting a sensible limit of files per submission seems to work best
-- CSRF
-  - use CSRF cookies where you can
-- slowloris with the nature large body requests
-  - set reasonable request timeouts
-- SQL / code injection via form names and values
-  - make sure you are checking the content of the form before processing or storing
+- Additional tests (described in the test file)
+- Sentinel errors
+- Add a JSON Schema to describe the object accepted
