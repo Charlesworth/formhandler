@@ -11,13 +11,53 @@ import (
 )
 
 const (
-	headerKeyContentType     = "Content-Type"
+	headerKeyContentType = "Content-Type"
+
 	headerValFormURLEncoded  = "application/x-www-form-urlencoded"
 	headerValApplicationJSON = "application/json"
 	headerValFormMultipart   = "multipart/form-data"
 
 	megabyte = 1_048_576
 )
+
+// GetFormContent accepts a request of content type "application/x-www-form-urlencoded",
+// "application/json" or "multipart/form-data", parses the body and returns the form data
+// and files contained in the request
+func GetFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	return GetFormContentWithConfig(megabyte, megabyte*10, megabyte*10)(w, r)
+}
+
+// GetFormContentWithConfig operates the same as GetFormContent but with added config options:
+// - maxFormSize: The maximum size in bytes a form request can be (applies to JSON and URL encoded forms, which cannot have files attached)
+// - maxFormWithFilesSize: The maximum size in bytes a form request with attached files can be (applies to multipart/form-data encoded forms, which can have files attached)
+// - maxMemory: Given a form request body is parsed, maxMemory bytes of its file parts are stored in memory, with the remainder stored on disk in temporary files (applies to multipart/form-data encoded forms, which can have files attached).
+func GetFormContentWithConfig(maxFormSize int64, maxFormWithFilesSize int64, maxMemory int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
+
+		switch contentType := getContentType(r.Header); contentType {
+
+		case headerValApplicationJSON:
+			r.Body = http.MaxBytesReader(w, r.Body, maxFormSize)
+			results, err = parseApplicationJSON(r.Body)
+
+		case headerValFormURLEncoded:
+			r.Body = http.MaxBytesReader(w, r.Body, maxFormSize)
+			results, err = parseFormURLEncoded(r)
+
+		case headerValFormMultipart:
+			r.Body = http.MaxBytesReader(w, r.Body, maxFormWithFilesSize)
+			results, files, err = parseFormMultipart(r, maxMemory)
+
+		case "":
+			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header is required")}
+
+		default:
+			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header %s is unsupported", contentType)}
+		}
+
+		return results, files, err
+	}
+}
 
 // isMultipartFormHeader returns if the content-type header is multipart/form-data.
 // because multipart/form-data has the field boundaries suffixed to the header,
@@ -36,7 +76,7 @@ func getContentType(header http.Header) string {
 }
 
 // ParseError is the error returned from parsing the request that can be used
-// to produce a http error response with it's status and message
+// to produce a http error response with a status and message
 type ParseError struct {
 	status int
 	msg    string
@@ -44,38 +84,6 @@ type ParseError struct {
 
 func (pe *ParseError) Error() string {
 	return pe.msg
-}
-
-func GetFormContentWithConfig(formSize int64, formWithFilesSize int64) func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
-	return func(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
-
-		switch contentType := getContentType(r.Header); contentType {
-
-		case headerValApplicationJSON:
-			r.Body = http.MaxBytesReader(w, r.Body, formSize)
-			results, err = parseApplicationJSON(r.Body)
-
-		case headerValFormURLEncoded:
-			r.Body = http.MaxBytesReader(w, r.Body, formSize)
-			results, err = parseFormURLEncoded(r)
-
-		case headerValFormMultipart:
-			r.Body = http.MaxBytesReader(w, r.Body, formWithFilesSize)
-			results, files, err = parseFormMultipart(r)
-
-		case "":
-			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header is required")}
-
-		default:
-			err = &ParseError{status: http.StatusUnsupportedMediaType, msg: fmt.Sprintf("Content-Type header %s is unsupported", contentType)}
-		}
-
-		return results, files, err
-	}
-}
-
-func GetFormContent(w http.ResponseWriter, r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err error) {
-	return GetFormContentWithConfig(megabyte, megabyte*10)(w, r)
 }
 
 func parseApplicationJSON(reader io.Reader) (results map[string][]string, err *ParseError) {
@@ -90,7 +98,7 @@ func parseApplicationJSON(reader io.Reader) (results map[string][]string, err *P
 			return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf("Request body contains badly-formed JSON (at position %d)", syntaxError.Offset)}
 
 		case errors.Is(decodeErr, io.ErrUnexpectedEOF):
-			return nil, &ParseError{status: http.StatusBadRequest, msg: fmt.Sprintf("Request body contains badly-formed JSON")}
+			return nil, &ParseError{status: http.StatusBadRequest, msg: "Request body contains badly-formed JSON"}
 
 		case errors.Is(decodeErr, io.EOF):
 			return nil, &ParseError{status: http.StatusBadRequest, msg: "Request body must not be empty"}
@@ -99,8 +107,7 @@ func parseApplicationJSON(reader io.Reader) (results map[string][]string, err *P
 			return nil, &ParseError{status: http.StatusRequestEntityTooLarge, msg: "Request body too large"}
 
 		default:
-			// TODO: This is an unkown error here, putting as a server error for now
-			return nil, &ParseError{status: http.StatusInternalServerError, msg: "Internal Server Error"}
+			return nil, &ParseError{status: http.StatusInternalServerError, msg: "JSON parsing error"}
 		}
 	}
 
@@ -165,9 +172,8 @@ func parseFormURLEncoded(r *http.Request) (results map[string][]string, err *Par
 	return results, nil
 }
 
-func parseFormMultipart(r *http.Request) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
-	// TODO: use the same as the max bytes reader here
-	parseFormErr := r.ParseMultipartForm(32 << 20) // maxMemory 32MB
+func parseFormMultipart(r *http.Request, maxMemory int64) (results map[string][]string, files map[string][]*multipart.FileHeader, err *ParseError) {
+	parseFormErr := r.ParseMultipartForm(maxMemory)
 	if parseFormErr != nil {
 		return nil, nil, &ParseError{status: http.StatusBadRequest, msg: `Invalid URL encoded form`}
 	}
@@ -178,8 +184,9 @@ func parseFormMultipart(r *http.Request) (results map[string][]string, files map
 	return results, r.MultipartForm.File, nil
 }
 
+// Unanswered fields in URL encoded and multipart forms are encoded as an empty []string,
+// this function removes the empty []string from the results
 func reduceUnansweredFields(results map[string][]string) {
-	// unanswered fields are encoded as an empty []string, these are removed
 	for field, values := range results {
 		if values == nil || len(values) == 0 || (len(values) == 1 && values[0] == "") {
 			delete(results, field)

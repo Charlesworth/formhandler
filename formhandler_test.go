@@ -2,6 +2,7 @@ package formhandler
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -187,6 +188,8 @@ func TestGetFormContent_JSONEncoded(t *testing.T) {
 			assert.Equal(t, tt.expectedValuesOutput, results, "unexpected parsed form results")
 			if tt.expectedError {
 				assert.Error(t, err)
+				var pe *ParseError
+				assert.True(t, errors.As(err, &pe), "Returned error is not base type ParseError")
 			} else {
 				assert.Nil(t, err)
 			}

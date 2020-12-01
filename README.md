@@ -5,7 +5,16 @@
 - make a default handler
 - make a handler generator with optional config
 - use x/errors
+  - use sentinel errors to get the base error type
+  - wrap the sentinel errors with the particular request context
+  - make the Sentinel errors exported
 - test url encoded and multipart with no body
+
+## notes
+
+- urlEncoded forms are capped at 10MB by the std lib, but can be further limited using the maxBytesReader
+
+-
 
 ## Form requests
 
@@ -15,7 +24,7 @@ Form post requests will either contain Content-Type `application/x-www-form-urle
 
 > if you have binary (non-alphanumeric) data (or a significantly sized payload) to transmit, use multipart/form-data. Otherwise, use application/x-www-form-urlencoded ([source](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type))
 
-It is possile to send files via `application/x-www-form-urlencoded` but it is highly inefficient, resulting in request sizes at least 3x bigger for each non-alphanumeric byte ([source](https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data)).
+It is possible to send files via `application/x-www-form-urlencoded` but it is highly inefficient, resulting in request sizes at least 3x bigger for each non-alphanumeric byte ([source](https://stackoverflow.com/questions/4007969/application-x-www-form-urlencoded-or-multipart-form-data)).
 For this reason it is useful to refuse requests with files that use `application/x-www-form-urlencoded`.
 
 You could also use JS to encode your forms into whatever you wanted, i.e. encode to JSON or XML and send that.
